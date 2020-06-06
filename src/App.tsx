@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
 import './App.css';
-import { Router, Route, Link, useLocation } from 'react-router-dom';
+import { Router, Route, Link, useLocation, Redirect } from 'react-router-dom';
 import * as H from 'history';
+import styled from 'styled-components';
 
 import { createStore, U, createReducer, ActionsUnion, Effect, fromActions } from '@rxsv/core';
 import { withDevTools } from '@rxsv/tools';
@@ -108,13 +109,17 @@ const history = H.createBrowserHistory();
 const beersStore = withDevTools(createStore(beersReducer, createBeersEffect(history)));
 
 const useBeers = () => {
-  const location = useLocation();
   const beers = useObservableState(beersStore.state$, RD.initial);
   const fetchBeers = useCallback(
     (page: number) => () => beersStore.action$.next(BeersAction.FETCH_BEERS_STARTED({ perPage: 25, page })),
     [],
   );
 
+  return { beers, fetchBeers };
+};
+
+const usePagination = () => {
+  const location = useLocation();
   const currentPage = pipe(location, getPageFromSearch);
   const nextPage = pipe(
     currentPage,
@@ -122,17 +127,14 @@ const useBeers = () => {
     O.getOrElse(() => 2),
   );
 
-  return { beers, fetchBeers, currentPage, nextPage };
+  return { currentPage, nextPage };
 };
 
 const BeersCatalog = () => {
-  const { beers, nextPage } = useBeers();
+  const { beers } = useBeers();
 
   return (
     <div>
-      <Link className="button is-primary is-large" to={`/beers?page=${nextPage}`}>
-        next
-      </Link>
       {pipe(
         beers,
         RD.fold(
@@ -140,25 +142,29 @@ const BeersCatalog = () => {
           () => <h2>Loading...</h2>,
           e => <h2>{e.message}</h2>,
           beers => (
-            <ul className="container">
-              <h2 className="title">Beers</h2>
-              {pipe(
-                beers,
-                R.collect((_k, beer) => (
-                  <li key={beer.id}>
-                    <div>
-                      <h3 className="subtitle">{beer.name}</h3>
-                      <p>
-                        <span>{beer.tagline}</span>
-                        <span>{beer.first_brewed}</span>
-                      </p>
-                      <p>{beer.description}</p>
-                      <img src={beer.image_url} alt={`A bottle of the ${beer.name}`}></img>
-                    </div>
-                  </li>
-                )),
-              )}
-            </ul>
+            <div className="container">
+              <CatalogPage className="container">
+                {pipe(
+                  beers,
+                  R.collect((_k, beer) => (
+                    <li key={beer.id} className="card">
+                      <div className="card-content">
+                        <header className="level">
+                          <h3 className="card-header-title">
+                            {beer.name}, {beer.tagline}
+                          </h3>
+                          <p className="subtitle">{beer.first_brewed}</p>
+                        </header>
+                        <div className="card-content level">
+                          <Label src={beer.image_url} alt={`A bottle of the ${beer.name}`} />
+                          <p className="content">{beer.description}</p>
+                        </div>
+                      </div>
+                    </li>
+                  )),
+                )}
+              </CatalogPage>
+            </div>
           ),
         ),
       )}
@@ -166,16 +172,65 @@ const BeersCatalog = () => {
   );
 };
 
+const CatalogPage = styled.ul`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr));
+  grid-gap: 1rem;
+`;
+
+const Label = styled.img`
+  object-fit: contain;
+  max-width: 4rem;
+
+  margin-right: 3rem;
+`;
+
+const Navigation: React.FC = () => {
+  const { nextPage } = usePagination();
+
+  return (
+    <Link className="button is-primary" to={`/beers?page=${nextPage}`}>
+      next page
+    </Link>
+  );
+};
+
 export const App = () => (
   <Router history={history}>
-    <div className="App">
-      <header className="App-header">
-        <section className="section">
-          <Route path="/:id">
-            <BeersCatalog />
-          </Route>
-        </section>
+    <div>
+      <header>
+        <nav className="navbar is-fixed-bottom has-shadow" role="navigation" aria-label="main navigation">
+          <div className="container is-fullhd">
+            <NavItems>
+              <div>
+                <Link to="/beers" className="title is-primary">
+                  DIY 🐶
+                </Link>
+              </div>
+
+              <div>
+                <Navigation />
+              </div>
+            </NavItems>
+          </div>
+        </nav>
       </header>
+      <main className="section">
+        <Route path="/:id">
+          <BeersCatalog />
+        </Route>
+        <Route path="/" exact>
+          <Redirect to="/beers" />
+        </Route>
+      </main>
     </div>
   </Router>
 );
+
+const NavItems = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem;
+`;
